@@ -6,8 +6,10 @@ import time
 import hmac
 import base64
 
-
 ssm_github_secret_path = os.getenv("SSM_GITHUB_SECRET_PATH")
+topic_arn = os.getenv("TOPIC_ARN")
+
+sns_client = boto3.client('sns')
 
 
 def handler(event, context):
@@ -18,11 +20,12 @@ def handler(event, context):
             WithDecryption=True
         )['Parameter']['Value']
     except Exception as e:
+        print(e.__str__())
         return {
             "statusCode": 400,
             "headers": {
                 "Cache-Control": "max-age=3600",
-                "Message": e.__str__()
+                "Message": "Internal Server Error, please check logs"
             }
         }
     if 'x-hub-signature-256' not in event['headers']:
@@ -35,20 +38,40 @@ def handler(event, context):
         }
 
     event_signature = event['headers']['x-hub-signature-256'].split("=")[1]
-    generated_signature = hmac.new(github_secret.encode(), base64.b64decode(event['body']), 'sha256')
+    if event['isBase64Encoded'] == 'True':
+        signature_body = base64.b64decode(event['body'])
+    else:
+        signature_body = event['body']
+    generated_signature = hmac.new(github_secret.encode('utf-8'), signature_body.encode('utf-8'), 'sha256')
     if hmac.compare_digest(event_signature, generated_signature.hexdigest()):
         ### Let do something here, like publish event to SNS Topic
+        try:
+            publish = sns_client.publish(TargetArn=topic_arn,
+                                         Message=json.dumps({"default": signature_body}),
+                                         MessageAttributes={"github_event": {"DataType": "String",
+                                                                             "StringValue": event['headers']['x-github-event']}},
+                                        MessageStructure = 'json')
+        except Exception as e:
+            print(e.__str__())
+            return {
+                "statusCode": 400,
+                "headers": {
+                    "Cache-Control": "max-age=3600",
+                    "Message": "Can NOT publish message to SNS"
+                }
+            }
+
         return {
-            "statusCode": 200,
+            "statusCode": publish['ResponseMetadata']['HTTPStatusCode'],
             "headers": {
-                "Cache-Control": "max-age=3600",
-                "Message": "signature matched"
+                "Cache-Control": "max-age=3600"
             }
         }
 
     return {
-        "statusCode": 200,
+        "statusCode": '500',
         "headers": {
-            "Cache-Control": "max-age=3600"
+            "Cache-Control": "max-age=3600",
+            "Message": "Signature does not match"
         }
     }
