@@ -1,8 +1,6 @@
 import os
 import boto3
 import json
-import logging
-import time
 import hmac
 import base64
 
