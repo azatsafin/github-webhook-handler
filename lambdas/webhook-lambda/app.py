@@ -9,7 +9,6 @@ topic_arn = os.getenv("TOPIC_ARN")
 
 sns_client = boto3.client('sns')
 
-
 def handler(event, context):
     try:
         ssm_client = boto3.client('ssm')

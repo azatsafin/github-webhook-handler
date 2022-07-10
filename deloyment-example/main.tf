@@ -1,3 +1,7 @@
+provider "aws" {
+  region = "eu-central-1"
+}
+
 module "github_webhook_handler" {
   source = "../"
   aws_region = "eu-central-1"
